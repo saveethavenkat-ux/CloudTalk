@@ -1,41 +1,39 @@
-import os
-from pathlib import Path
-from dotenv import load_dotenv
-from groq import Groq
+import requests
 
-# Find the CloudTalk project folder
-BASE_DIR = Path(__file__).resolve().parent.parent
-
-# Load .env
-load_dotenv(BASE_DIR / ".env")
-
-api_key = os.getenv("GROQ_API_KEY")
-
-if not api_key:
-    raise ValueError(
-        "GROQ_API_KEY is not configured. "
-        "Check your CloudTalk/.env file."
-    )
-
-client = Groq(api_key=api_key)
+VERCEL_API_URL = "https://cloud-talk-avinvduhk-savee1.vercel.app/api"
 
 
-def get_ai_response(messages):
+def get_ai_response(messages, session_id=None):
+    try:
+        payload = {
+            "messages": messages,
+            "session_id": session_id
+        }
 
-    response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You are CloudTalk, a helpful and friendly AI assistant. "
-                    "Give clear, accurate and concise answers."
-                ),
-            },
-            *messages,
-        ],
-        temperature=0.7,
-        max_tokens=500,
-    )
+        response = requests.post(
+            VERCEL_API_URL,
+            json=payload,
+            timeout=60
+        )
 
-    return response.choices[0].message.content
+        if response.status_code != 200:
+            return (
+                f"Cloud API returned {response.status_code}: "
+                f"{response.text}"
+            )
+
+        data = response.json()
+
+        if "error" in data:
+            return f"Cloud API error: {data['error']}"
+
+        return data.get(
+            "response",
+            "Sorry, I couldn't generate a response."
+        )
+
+    except requests.exceptions.RequestException as e:
+        return f"Cloud API connection error: {e}"
+
+    except Exception as e:
+        return f"Something went wrong: {e}"
