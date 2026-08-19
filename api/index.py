@@ -32,6 +32,10 @@ class handler(BaseHTTPRequestHandler):
             if not supabase_key:
                 raise Exception("SUPABASE_KEY is not configured.")
 
+            print("SUPABASE_URL:", repr(supabase_url))
+            print("SUPABASE_URL_TYPE:", type(supabase_url).__name__)
+            print("SUPABASE_KEY_EXISTS:", bool(supabase_key))
+
             supabase = create_client(
                 supabase_url,
                 supabase_key
