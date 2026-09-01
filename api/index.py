@@ -20,12 +20,12 @@ class handler(BaseHTTPRequestHandler):
             session_id = data.get("session_id")
 
             groq_key = os.environ.get("GROQ_API_KEY")
-            supabase_url = os.environ.get("SUPABASE_URL", "").strip()
-            supabase_key = os.environ.get("SUPABASE_KEY", "").strip()
+            supabase_url = os.environ.get("SUPABASE_URL", "")
+            supabase_key = os.environ.get("SUPABASE_KEY", "")
 
-            print("SUPABASE_URL:", repr(supabase_url))
-            print("SUPABASE_URL_TYPE:", type(supabase_url).__name__)
-            print("SUPABASE_KEY_EXISTS:", bool(supabase_key))   
+            supabase_url = supabase_url.replace("\ufeff", "").strip().strip('"').strip("'")
+            supabase_key = supabase_key.replace("\ufeff", "").strip().strip('"').strip("'")
+   
 
             if not groq_key:
                 raise Exception("GROQ_API_KEY is not configured.")
@@ -36,10 +36,7 @@ class handler(BaseHTTPRequestHandler):
             if not supabase_key:
                 raise Exception("SUPABASE_KEY is not configured.")
 
-            print("SUPABASE_URL:", repr(supabase_url))
-            print("SUPABASE_URL_TYPE:", type(supabase_url).__name__)
-            print("SUPABASE_KEY_EXISTS:", bool(supabase_key))
-
+            
             supabase = create_client(
                 supabase_url,
                 supabase_key
