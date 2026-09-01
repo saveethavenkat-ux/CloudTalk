@@ -1,14 +1,18 @@
 import streamlit as st
-import sys
-import os
+import requests
+import uuid
 
-sys.path.append(
-    os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..")
-    )
-)
 
-from backend.ai_service import get_ai_response
+# ============================================================
+# CONFIGURATION
+# ============================================================
+
+API_URL = "https://cloud-talk-7vqxgmj8g-savee1.vercel.app/api"
+
+
+# ============================================================
+# PAGE CONFIGURATION
+# ============================================================
 
 st.set_page_config(
     page_title="CloudTalk",
@@ -17,9 +21,15 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+
+# ============================================================
+# CUSTOM CSS
+# ============================================================
+
 st.markdown(
     """
     <style>
+
     .main {
         padding-top: 1rem;
     }
@@ -79,10 +89,16 @@ st.markdown(
         font-size: 0.8rem;
         padding: 2rem 0 1rem 0;
     }
+
     </style>
     """,
     unsafe_allow_html=True
 )
+
+
+# ============================================================
+# HEADER
+# ============================================================
 
 st.markdown(
     """
@@ -97,7 +113,91 @@ st.markdown(
     unsafe_allow_html=True
 )
 
+
+# ============================================================
+# SESSION INITIALIZATION
+# ============================================================
+
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+if "session_id" not in st.session_state:
+
+    # Try to keep the same session ID in the browser URL
+    existing_session = st.query_params.get("session_id")
+
+    if existing_session:
+        st.session_state.session_id = existing_session
+    else:
+        st.session_state.session_id = str(uuid.uuid4())
+        st.query_params["session_id"] = st.session_state.session_id
+
+if "chat_id" not in st.session_state:
+    st.session_state.chat_id = None
+
+if "history_loaded" not in st.session_state:
+    st.session_state.history_loaded = False
+
+
+# ============================================================
+# LOAD CHAT HISTORY FROM SUPABASE
+# ============================================================
+
+if not st.session_state.history_loaded:
+
+    existing_chat_id = st.query_params.get("chat_id")
+
+    if existing_chat_id:
+
+        try:
+
+            history_response = requests.get(
+                API_URL,
+                params={
+                    "chat_id": existing_chat_id
+                },
+                timeout=30
+            )
+
+            if history_response.status_code == 200:
+
+                history_data = history_response.json()
+
+                saved_messages = history_data.get(
+                    "messages",
+                    []
+                )
+
+                st.session_state.messages = []
+
+                for message in saved_messages:
+
+                    role = message.get("role")
+                    content = message.get("content")
+
+                    if role in ["user", "assistant"] and content:
+
+                        st.session_state.messages.append(
+                            {
+                                "role": role,
+                                "content": content
+                            }
+                        )
+
+                st.session_state.chat_id = existing_chat_id
+
+        except Exception:
+            pass
+
+    st.session_state.history_loaded = True
+
+
+# ============================================================
+# SIDEBAR
+# ============================================================
+
 with st.sidebar:
+
     st.markdown(
         '<div class="sidebar-title">☁️ CloudTalk</div>',
         unsafe_allow_html=True
@@ -147,6 +247,7 @@ with st.sidebar:
         - 🎈 Streamlit
         - ☁️ Vercel Serverless Functions
         - 🤖 Groq AI
+        - 🗄️ Supabase
         - 🔗 REST API
         - 🐙 GitHub
         """
@@ -154,30 +255,78 @@ with st.sidebar:
 
     st.divider()
 
-    if st.button("🗑️ Clear Chat", use_container_width=True):
+    # ========================================================
+    # CLEAR CHAT
+    # ========================================================
+
+    if st.button(
+        "🗑️ Clear Chat",
+        use_container_width=True
+    ):
+
         st.session_state.messages = []
+        st.session_state.chat_id = None
+        st.session_state.history_loaded = True
+
+        # Create completely new session
+        new_session_id = str(uuid.uuid4())
+
+        st.session_state.session_id = new_session_id
+
+        # Remove old chat from URL
+        st.query_params.clear()
+
+        # Store new session
+        st.query_params["session_id"] = new_session_id
+
         st.rerun()
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-if "session_id" not in st.session_state:
-    import uuid
-    st.session_state.session_id = str(uuid.uuid4())
+
+# ============================================================
+# DISPLAY SAVED / CURRENT MESSAGES
+# ============================================================
 
 for message in st.session_state.messages:
+
     with st.chat_message(message["role"]):
-        st.markdown(message["content"])
+
+        st.markdown(
+            message["content"]
+        )
+
+
+# ============================================================
+# WELCOME MESSAGE
+# ============================================================
 
 if len(st.session_state.messages) == 0:
+
     st.info(
         "👋 Welcome to CloudTalk! "
         "Ask me anything and I'll process your request "
         "through the cloud."
     )
 
-prompt = st.chat_input("💬 Type your message...")
+
+# ============================================================
+# CHAT INPUT
+# ============================================================
+
+prompt = st.chat_input(
+    "💬 Type your message..."
+)
+
+
+# ============================================================
+# SEND MESSAGE
+# ============================================================
 
 if prompt:
+
+    # --------------------------------------------------------
+    # Add user message locally
+    # --------------------------------------------------------
+
     st.session_state.messages.append(
         {
             "role": "user",
@@ -186,17 +335,102 @@ if prompt:
     )
 
     with st.chat_message("user"):
+
         st.markdown(prompt)
 
+
+    # --------------------------------------------------------
+    # AI RESPONSE
+    # --------------------------------------------------------
+
     with st.chat_message("assistant"):
-        with st.spinner("☁️ Sending request to the cloud..."):
+
+        with st.spinner(
+            "☁️ Sending request to the cloud..."
+        ):
+
             try:
-                response = get_ai_response(
-    st.session_state.messages,
-    st.session_state.session_id
-)
+
+                api_response = requests.post(
+                    API_URL,
+                    json={
+                        "messages": st.session_state.messages,
+                        "session_id": st.session_state.session_id
+                    },
+                    timeout=60
+                )
+
+
+                # ------------------------------------------------
+                # Check API response
+                # ------------------------------------------------
+
+                if api_response.status_code != 200:
+
+                    try:
+                        error_data = api_response.json()
+
+                        error_message = error_data.get(
+                            "error",
+                            "Unknown API error"
+                        )
+
+                    except Exception:
+
+                        error_message = api_response.text
+
+
+                    raise Exception(
+                        f"API Error {api_response.status_code}: "
+                        f"{error_message}"
+                    )
+
+
+                # ------------------------------------------------
+                # Read JSON response
+                # ------------------------------------------------
+
+                data = api_response.json()
+
+                response = data.get(
+                    "response",
+                    ""
+                )
+
+                returned_chat_id = data.get(
+                    "chat_id"
+                )
+
+
+                if not response:
+
+                    raise Exception(
+                        "The CloudTalk API returned an empty response."
+                    )
+
+
+                # ------------------------------------------------
+                # Save chat ID
+                # ------------------------------------------------
+
+                if returned_chat_id:
+
+                    st.session_state.chat_id = returned_chat_id
+
+                    # Put chat ID in browser URL
+                    st.query_params["chat_id"] = returned_chat_id
+
+
+                # ------------------------------------------------
+                # Display AI response
+                # ------------------------------------------------
 
                 st.markdown(response)
+
+
+                # ------------------------------------------------
+                # Save assistant message locally
+                # ------------------------------------------------
 
                 st.session_state.messages.append(
                     {
@@ -205,18 +439,46 @@ if prompt:
                     }
                 )
 
-            except Exception as e:
+
+            except requests.exceptions.Timeout:
+
                 st.error(
-                    "❌ Unable to connect to the CloudTalk AI service."
+                    "⏱️ The CloudTalk API took too long to respond."
                 )
-                st.caption(str(e))
+
+
+            except requests.exceptions.RequestException as e:
+
+                st.error(
+                    "❌ Unable to connect to the CloudTalk API."
+                )
+
+                st.caption(
+                    str(e)
+                )
+
+
+            except Exception as e:
+
+                st.error(
+                    "❌ Something went wrong."
+                )
+
+                st.caption(
+                    str(e)
+                )
+
+
+# ============================================================
+# FOOTER
+# ============================================================
 
 st.markdown(
     """
     <div class="footer">
         ☁️ CloudTalk • Serverless AI Chatbot
         <br>
-        Built using Python, Streamlit, Vercel & Groq
+        Built using Python, Streamlit, Vercel, Groq & Supabase
     </div>
     """,
     unsafe_allow_html=True
