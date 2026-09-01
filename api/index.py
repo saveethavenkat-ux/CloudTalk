@@ -1,6 +1,5 @@
 import os
 import json
-from urllib.parse import urlparse
 from http.server import BaseHTTPRequestHandler
 from groq import Groq
 from supabase import create_client
@@ -20,13 +19,9 @@ class handler(BaseHTTPRequestHandler):
             messages = data.get("messages", [])
             session_id = data.get("session_id")
 
-            groq_key = os.environ.get("GROQ_API_KEY", "")
-            supabase_url = os.environ.get("SUPABASE_URL", "")
-            supabase_key = os.environ.get("SUPABASE_KEY", "")
-
-            groq_key = groq_key.replace("\ufeff", "").strip().strip('"').strip("'")
-            supabase_url = supabase_url.replace("\ufeff", "").strip().strip('"').strip("'")
-            supabase_key = supabase_key.replace("\ufeff", "").strip().strip('"').strip("'")
+            groq_key = os.environ.get("GROQ_API_KEY", "").strip()
+            supabase_url = os.environ.get("SUPABASE_URL", "").strip()
+            supabase_key = os.environ.get("SUPABASE_KEY", "").strip()
 
             if not groq_key:
                 raise Exception("GROQ_API_KEY is not configured.")
@@ -37,22 +32,13 @@ class handler(BaseHTTPRequestHandler):
             if not supabase_key:
                 raise Exception("SUPABASE_KEY is not configured.")
 
-            parsed_url = urlparse(supabase_url)
+            if not supabase_url.startswith("https://"):
+                raise Exception("SUPABASE_URL must start with https://")
 
-            if parsed_url.scheme != "https" or not parsed_url.netloc:
-                raise Exception(
-                    "SUPABASE_URL_FORMAT_ERROR: " + repr(supabase_url)
-                )
-
-            try:
-                supabase = create_client(
-                    supabase_url,
-                    supabase_key
-                )
-            except Exception as e:
-                raise Exception(
-                    "SUPABASE_CREATE_CLIENT_ERROR: " + str(e)
-                )
+            supabase = create_client(
+                supabase_url,
+                supabase_key
+            )
 
             groq = Groq(api_key=groq_key)
 
@@ -75,10 +61,7 @@ class handler(BaseHTTPRequestHandler):
                 title = "New CloudTalk Chat"
 
                 if messages:
-                    first_message = messages[0].get(
-                        "content",
-                        ""
-                    )
+                    first_message = messages[0].get("content", "")
                     title = first_message[:50]
 
                 new_chat = (
@@ -102,14 +85,16 @@ class handler(BaseHTTPRequestHandler):
                 last_message = messages[-1]
 
                 if last_message.get("role") == "user":
-                    supabase.table("messages").insert({
-                        "chat_id": chat_id,
-                        "role": "user",
-                        "content": last_message.get(
-                            "content",
-                            ""
-                        )
-                    }).execute()
+                    (
+                        supabase
+                        .table("messages")
+                        .insert({
+                            "chat_id": chat_id,
+                            "role": "user",
+                            "content": last_message.get("content", "")
+                        })
+                        .execute()
+                    )
 
             response = groq.chat.completions.create(
                 model="llama-3.1-8b-instant",
@@ -130,11 +115,16 @@ class handler(BaseHTTPRequestHandler):
 
             ai_response = response.choices[0].message.content
 
-            supabase.table("messages").insert({
-                "chat_id": chat_id,
-                "role": "assistant",
-                "content": ai_response
-            }).execute()
+            (
+                supabase
+                .table("messages")
+                .insert({
+                    "chat_id": chat_id,
+                    "role": "assistant",
+                    "content": ai_response
+                })
+                .execute()
+            )
 
             result = {
                 "response": ai_response,
