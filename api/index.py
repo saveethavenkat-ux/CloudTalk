@@ -23,6 +23,10 @@ class handler(BaseHTTPRequestHandler):
             supabase_url = os.environ.get("SUPABASE_URL")
             supabase_key = os.environ.get("SUPABASE_KEY")
 
+            print("SUPABASE_URL:", repr(supabase_url))
+            print("SUPABASE_URL_TYPE:", type(supabase_url).__name__)
+            print("SUPABASE_KEY_EXISTS:", bool(supabase_key))   
+
             if not groq_key:
                 raise Exception("GROQ_API_KEY is not configured.")
 
