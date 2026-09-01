@@ -1,5 +1,6 @@
 import os
 import json
+from urllib.parse import urlparse
 from http.server import BaseHTTPRequestHandler
 from groq import Groq
 from supabase import create_client
@@ -19,13 +20,13 @@ class handler(BaseHTTPRequestHandler):
             messages = data.get("messages", [])
             session_id = data.get("session_id")
 
-            groq_key = os.environ.get("GROQ_API_KEY")
+            groq_key = os.environ.get("GROQ_API_KEY", "")
             supabase_url = os.environ.get("SUPABASE_URL", "")
             supabase_key = os.environ.get("SUPABASE_KEY", "")
 
+            groq_key = groq_key.replace("\ufeff", "").strip().strip('"').strip("'")
             supabase_url = supabase_url.replace("\ufeff", "").strip().strip('"').strip("'")
             supabase_key = supabase_key.replace("\ufeff", "").strip().strip('"').strip("'")
-   
 
             if not groq_key:
                 raise Exception("GROQ_API_KEY is not configured.")
@@ -36,11 +37,22 @@ class handler(BaseHTTPRequestHandler):
             if not supabase_key:
                 raise Exception("SUPABASE_KEY is not configured.")
 
-            
-            supabase = create_client(
-                supabase_url,
-                supabase_key
-            )
+            parsed_url = urlparse(supabase_url)
+
+            if parsed_url.scheme != "https" or not parsed_url.netloc:
+                raise Exception(
+                    "SUPABASE_URL_FORMAT_ERROR: " + repr(supabase_url)
+                )
+
+            try:
+                supabase = create_client(
+                    supabase_url,
+                    supabase_key
+                )
+            except Exception as e:
+                raise Exception(
+                    "SUPABASE_CREATE_CLIENT_ERROR: " + str(e)
+                )
 
             groq = Groq(api_key=groq_key)
 
@@ -78,6 +90,11 @@ class handler(BaseHTTPRequestHandler):
                     })
                     .execute()
                 )
+
+                if not new_chat.data:
+                    raise Exception(
+                        "Could not create chat in Supabase."
+                    )
 
                 chat_id = new_chat.data[0]["id"]
 
