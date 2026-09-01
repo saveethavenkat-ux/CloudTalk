@@ -20,8 +20,8 @@ class handler(BaseHTTPRequestHandler):
             session_id = data.get("session_id")
 
             groq_key = os.environ.get("GROQ_API_KEY")
-            supabase_url = os.environ.get("SUPABASE_URL")
-            supabase_key = os.environ.get("SUPABASE_KEY")
+            supabase_url = os.environ.get("SUPABASE_URL", "").strip()
+            supabase_key = os.environ.get("SUPABASE_KEY", "").strip()
 
             print("SUPABASE_URL:", repr(supabase_url))
             print("SUPABASE_URL_TYPE:", type(supabase_url).__name__)
